@@ -3,6 +3,8 @@
 #include "sm/gm/sm2.h"
 #include "sbi/riscv_encoding.h"
 
+static char random[PRIVATE_KEY_SIZE] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32};
+
 static int hash_enclave_mem(struct sm3_context *hash_ctx, pte_t* ptes, int level, uintptr_t va, int hash_va)
 {
   uintptr_t pte_per_page = RISCV_PGSIZE/sizeof(pte_t);
@@ -111,7 +113,7 @@ void update_enclave_hash(char *output, void* hash, uintptr_t nonce_arg)
 void sign_enclave(void* signature_arg, void* hash)
 {
   struct signature_t *signature = (struct signature_t*)signature_arg;
-  sm2_sign((void*)(signature->r), (void*)(signature->s), (void*)SM_PRI_KEY, hash);
+  sm2_sign((void*)(signature->r), (void*)(signature->s), (void*)random, hash);
 }
 
 int verify_enclave(void* signature_arg, void* hash)

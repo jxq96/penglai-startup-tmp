@@ -485,13 +485,13 @@ uintptr_t get_server_enclave_attest_report(char* name, uintptr_t *report, uintpt
     goto out;
   }
   
-  sbi_memcpy((void*)(m_report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(m_report.sm.hash), (void*)SM_HASH, HASH_SIZE);
-  sbi_memcpy((void*)(m_report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(m_report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
+  // sbi_memcpy((void*)(m_report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.hash), (void*)SM_HASH, HASH_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
 
   update_enclave_hash((char*)(m_report.enclave.hash), (void*)(attest_enclave->hash), nonce);
-  sign_enclave((void*)(m_report.enclave.signature), (void*)(m_report.enclave.hash));
+  // sign_enclave((void*)(m_report.enclave.signature), (void*)(m_report.enclave.hash));
   m_report.enclave.nonce = nonce;
 
   // Copy attestation report to enclave

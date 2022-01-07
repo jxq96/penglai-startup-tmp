@@ -18,7 +18,7 @@ int platform_init()
   pmp_config.size = (unsigned long)SM_SIZE;
   pmp_config.mode = PMP_A_NAPOT;
   pmp_config.perm = PMP_NO_PERM;
-  set_pmp(0, pmp_config);
+  // set_pmp(0, pmp_config);
 
   //config the last PMP to allow kernel to access memory
   pmp_config.paddr = 0;

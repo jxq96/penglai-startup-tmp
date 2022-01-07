@@ -1745,20 +1745,17 @@ uintptr_t attest_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t nonce)
     sbi_printf("M mode: attest_enclave: enclave%ld is not attestable\n", eid);
     return -1UL;
   }
-
-  sbi_memcpy((void*)(report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(report.sm.hash), (void*)SM_HASH, HASH_SIZE);
-  sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
+  //FIXME: Now these keys are just random numbers.
+  // sbi_memcpy((void*)(report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(report.sm.hash), (void*)SM_HASH, HASH_SIZE);
+  // sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
 
   update_enclave_hash((char *)(report.enclave.hash), (char *)enclave->hash, nonce);
-  sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
+  // sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
   report.enclave.nonce = nonce;
-
   //printHex((unsigned char*)(report.enclave.signature), 64);
-
   copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
-
   acquire_enclave_metadata_lock();
   enclave->state = old_state;
   release_enclave_metadata_lock();
@@ -1780,11 +1777,11 @@ uintptr_t attest_shadow_enclave(uintptr_t eid, uintptr_t report_ptr, uintptr_t n
     return -1UL;
   }
   update_enclave_hash((char *)(report.enclave.hash), (char *)shadow_enclave->hash, nonce);
-  sbi_memcpy((void*)(report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(report.sm.hash), (void*)SM_HASH, HASH_SIZE);
-  sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
-  sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
+  // sbi_memcpy((void*)(report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(report.sm.hash), (void*)SM_HASH, HASH_SIZE);
+  // sbi_memcpy((void*)(report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
+  // sign_enclave((void*)(report.enclave.signature), (void*)(report.enclave.hash));
   report.enclave.nonce = nonce;
 
   copy_to_host((void*)report_ptr, (void*)(&report), sizeof(struct report_t));
@@ -2292,13 +2289,13 @@ uintptr_t get_enclave_attest_report(uintptr_t *report, uintptr_t nonce)
     goto out;
   }
   
-  sbi_memcpy((void*)(m_report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(m_report.sm.hash), (void*)SM_HASH, HASH_SIZE);
-  sbi_memcpy((void*)(m_report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
-  sbi_memcpy((void*)(m_report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
+  // sbi_memcpy((void*)(m_report.dev_pub_key), (void*)DEV_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.hash), (void*)SM_HASH, HASH_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.sm_pub_key), (void*)SM_PUB_KEY, PUBLIC_KEY_SIZE);
+  // sbi_memcpy((void*)(m_report.sm.signature), (void*)SM_SIGNATURE, SIGNATURE_SIZE);
 
   hash_enclave(enclave, (void*)(m_report.enclave.hash), nonce);
-  sign_enclave((void*)(m_report.enclave.signature), (void*)(m_report.enclave.hash));
+  // sign_enclave((void*)(m_report.enclave.signature), (void*)(m_report.enclave.hash));
   m_report.enclave.nonce = nonce;
 
   // Copy attestation report to enclave
