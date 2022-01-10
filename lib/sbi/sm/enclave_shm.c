@@ -229,7 +229,6 @@ uintptr_t enclave_shmget(uintptr_t *regs, uintptr_t shm_key, uintptr_t size,
 
 uintptr_t shmextend_after_resume(struct enclave_t *enclave, uintptr_t status)
 {
-	sbi_printf("shmextend after resume\n");
 	return -1UL;
 }
 

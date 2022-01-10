@@ -254,6 +254,7 @@ uintptr_t do_yield(uintptr_t* regs);
 //TODO: flags in enclave shared memory not being used now.
 uintptr_t enclave_shmget(uintptr_t* regs, uintptr_t key, uintptr_t size, uintptr_t flags);
 uintptr_t shmget_after_resume(struct enclave_t *enclave, uintptr_t paddr, uintptr_t size);
+uintptr_t shmextend_after_resume(struct enclave_t *enclave, uintptr_t status);
 uintptr_t sm_shm_attatch(uintptr_t* regs, uintptr_t key);
 uintptr_t enclave_shmdetach(uintptr_t* regs, uintptr_t key);
 uintptr_t enclave_shmdestroy(uintptr_t* regs, uintptr_t key);
