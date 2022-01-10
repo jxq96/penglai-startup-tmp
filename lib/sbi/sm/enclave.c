@@ -2035,6 +2035,9 @@ uintptr_t resume_from_ocall(uintptr_t* regs, unsigned int eid)
     case OCALL_SHM_GET:
       retval = shmget_after_resume(enclave, regs[13], regs[14]);
       break;
+    case OCALL_SHM_EXTEND_MEMORY:
+      retval = shmextend_after_resume(enclave,regs[13]);
+      break;
     default:
       retval = 0;
       break;

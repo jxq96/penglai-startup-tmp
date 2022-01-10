@@ -29,7 +29,7 @@ int enclave_shm_init()
 	global_shm_metadata_head = init_mem_link(DEFAULT_SHM_META_REGION_SIZE, sizeof(struct sbi_shm_infop));
 	if(!global_shm_metadata_head)
 	{
-		sbi_bug("M mode: enclave shared memory module init failed, maybe lacking of memory\n");
+		sbi_printf("M mode: enclave shared memory module init failed, maybe lacking of memory\n");
 		return -1;
 	}
 	global_shm_metadata_tail = global_shm_metadata_head;
@@ -170,11 +170,13 @@ uintptr_t enclave_shmget(uintptr_t *regs, uintptr_t shm_key, uintptr_t size,
 	}
 	if(!shm_init)
 	{
-		if(enclave_shm_init() != 0)
+		if(enclave_shm_init() != 0) //need extend memory
 		{
+		   copy_dword_to_host((uintptr_t*)enclave->ocall_func_id, OCALL_SHM_EXTEND_MEMORY);
+		   enclave->state = OCALLING;
+		   swap_from_enclave_to_host(regs, enclave);
 		   release_enclave_metadata_lock();
-		   sbi_printf("[opensbi] shared memory module init failed\n");
-           return -1UL;
+           return ENCLAVE_OCALL;
 		}
 		shm_init = 1;
 	}
@@ -222,6 +224,13 @@ uintptr_t enclave_shmget(uintptr_t *regs, uintptr_t shm_key, uintptr_t size,
 	retval	       = ENCLAVE_OCALL;
 	release_enclave_metadata_lock();
 	return retval;
+}
+
+
+uintptr_t shmextend_after_resume(struct enclave_t *enclave, uintptr_t status)
+{
+	sbi_printf("shmextend after resume\n");
+	return -1UL;
 }
 
 //shmget_after_resume with enclave_metadata_lock hold
