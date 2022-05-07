@@ -840,8 +840,14 @@ uintptr_t sm_pt_area_separation(uintptr_t tmp_pgd_order, uintptr_t tmp_pmd_order
  */
 uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
 {
+  #ifdef PROFILE_MONITOR
+  unsigned long start, end;
+  #endif
   enclave_create_param_t enclave_sbi_param_local;
   uintptr_t retval = 0;
+  #ifdef PROFILE_MONITOR
+  start = rdcycle();
+  #endif
   if(test_public_range(PADDR_TO_PFN(enclave_sbi_param),1) < 0){
     return ENCLAVE_ERROR;
   }
@@ -851,9 +857,13 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
       sizeof(enclave_create_param_t));
   if(retval != 0)
     return ENCLAVE_ERROR;
-
+  #ifdef PROFILE_MONITOR
+  end = rdcycle();
+  #endif
   retval = create_enclave(enclave_sbi_param_local);
-
+  #ifdef PROFILE_MONITOR
+  sbi_printf("check host parameter: %ld \n", end-start);
+  #endif
   return retval;
 }
 

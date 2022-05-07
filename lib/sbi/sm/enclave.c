@@ -1190,7 +1190,9 @@ uintptr_t create_enclave(enclave_create_param_t create_args)
   struct vm_area_struct* vma = NULL;
   uintptr_t ret = 0, free_mem = 0;
   int need_free_secure_memory = 0;
-
+  #ifdef PROFILE_MONITOR
+  unsigned long start[4], end[4];
+  #endif
   if(!enable_enclave())
   {
     ret = ENCLAVE_ERROR;
@@ -1199,7 +1201,9 @@ uintptr_t create_enclave(enclave_create_param_t create_args)
   }
 
   acquire_enclave_metadata_lock();
-
+  #ifdef PROFILE_MONITOR
+  start[0] = rdcycle();
+  #endif
   //check enclave memory layout
   if(check_and_set_secure_memory(create_args.paddr, create_args.size) != 0)
   {
@@ -1216,7 +1220,9 @@ uintptr_t create_enclave(enclave_create_param_t create_args)
     sbi_bug("M mode: %s: check memory layout is failed\n", __func__);
     goto failed;
   }
-
+  #ifdef PROFILE_MONITOR
+  end[0] = rdcycle();
+  #endif
   enclave = __alloc_enclave();
 
   release_enclave_metadata_lock();
@@ -1228,7 +1234,9 @@ uintptr_t create_enclave(enclave_create_param_t create_args)
     //sbi_printf("M mode: %s: alloc enclave is failed \n", __func__);
     goto failed;
   }
-
+  #ifdef PROFILE_MONITOR
+  start[1] = rdcycle();
+  #endif
   SET_ENCLAVE_METADATA(create_args.entry_point, enclave, &create_args, enclave_create_param_t *, paddr);
 
   //traverse vmas
@@ -1283,12 +1291,23 @@ uintptr_t create_enclave(enclave_create_param_t create_args)
     enclave->shm_paddr = 0;
     enclave->shm_size = 0;
   }
-  
+  #ifdef PROFILE_MONITOR
+  start[2] = rdcycle();
+  end[1] = start[2];
+  #endif
   hash_enclave(enclave, (void*)(enclave->hash), 0);
+  #ifdef PROFILE_MONITOR
+  end[2] = rdcycle();
+  #endif
   copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
 
   //Sync and flush the remote TLB entry.
   tlb_remote_sfence();
+  #ifdef PROFILE_MONITOR
+  sbi_printf("check_and_set_secure memory: %ld\n", end[0] -start[0]);
+  sbi_printf("set up VM: %ld\n", end[1]-start[1]);
+  sbi_printf("hash enclave: %ld\n", end[2] - start[2]);
+  #endif
   return ret;
 
 failed:

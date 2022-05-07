@@ -287,5 +287,13 @@ struct relay_page_entry_t
   unsigned long size;
 };
 
+#define PROFILE_MONITOR
+
+static inline unsigned long rdcycle(void)
+{
+	unsigned long ret;
+  	asm volatile ("rdcycle %0" : "=r"(ret));
+    return ret;
+}
 
 #endif /* _ENCLAVE_H */
