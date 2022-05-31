@@ -4,7 +4,7 @@
 #include "sm/enclave_mm.h"
 #include "sbi/riscv_atomic.h"
 #include "sbi/sbi_math.h"
-
+#include "sbi/sbi_console.h"
 // mm_region_list maintains the (free?) secure pages in monitor
 static struct mm_region_list_t *mm_region_list;
 static spinlock_t mm_regions_lock = SPINLOCK_INIT;
@@ -33,14 +33,32 @@ int check_and_set_secure_memory(unsigned long paddr, unsigned long size)
   }
 
   spin_lock(&mbitmap_lock);
-
+  #ifdef PROFILE_MONITOR
+  unsigned long start[3], end[3];
+  start[0] = rdcycle();
+  #endif
   if(test_public_range(PADDR_TO_PFN(paddr), size >> RISCV_PGSHIFT) != 0)
   {
     ret = -1;
     goto out;
   }
+  #ifdef PROFILE_MONITOR
+  end[0] = rdcycle();
+  start[1] = end[0];
+  #endif
   set_private_range(PADDR_TO_PFN(paddr), size >> RISCV_PGSHIFT);
+  #ifdef PROFILE_MONITOR
+  end[1] = rdcycle();
+  start[2] = end[1];
+  #endif
   unmap_mm_region(paddr, size);
+  #ifdef PROFILE_MONITOR
+  end[2] = rdcycle();
+  sbi_printf("test public range: %ld\n", end[0] - start[0]);
+  sbi_printf("set private range: %ld\n", end[1] - start[1]);
+  sbi_printf("unmap_mm_region: %ld\n", end[2] - start[2]);
+  #endif
+  
 
 out:
   spin_unlock(&mbitmap_lock);
