@@ -12,8 +12,12 @@ struct mm_region_list_t
 };
 
 int check_and_set_secure_memory(unsigned long paddr, unsigned long size);
+int set_secure_memory(unsigned long paddr, unsigned long size, struct enclave_t* enclave);
+void unset_secure_memory(unsigned long paddr, unsigned long size);
+int check_secure_memory(unsigned long paddr, unsigned long size);
 int __free_secure_memory(unsigned long paddr, unsigned long size);
 int free_secure_memory(unsigned long paddr, unsigned long size);
+void check_and_set_enclave_safety(struct enclave_t* enclave);
 
 uintptr_t mm_init(uintptr_t paddr, unsigned long size);
 void* mm_alloc(unsigned long req_size, unsigned long* resp_size);

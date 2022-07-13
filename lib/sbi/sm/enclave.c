@@ -23,7 +23,6 @@ extern int CPU_NEED_FLUSH[MAX_HARTS];
 extern int CPU_FLUSH_TAG;
 extern bool NEED_DESTORY_ENCLAVE[MAX_HARTS];
 extern bool NEED_STOP_ENCLAVE[MAX_HARTS];
-
 extern spinlock_t cpu_in_critical_lock;
 #define SET_FLUSH_TAG(hartid) CPU_FLUSH_TAG|(hartid)
 #define REMOVE_FLUSH_TAG(hartid) CPU_FLUSH_TAG&(~(1<<hartid)) 
@@ -1323,6 +1322,94 @@ failed:
 }
 
 /**
+ * \brief Create a new enclave but delay the procedure of checking pt_area.
+ * 
+ * \param create_args The arguments for creating a new enclave.
+ * \return uintptr_t Status code, 0 means success, while others mean failure. 
+ */
+uintptr_t fast_create_enclave(enclave_create_param_t create_args)
+{
+  struct enclave_t* enclave = NULL;
+  struct pm_area_struct* pma = NULL;
+  struct vm_area_struct* vma = NULL;
+  uintptr_t ret = 0, free_mem = 0;
+  if(!enable_enclave()){
+    ret = ENCLAVE_ERROR;
+    sbi_bug("M mode: %s: cannot enable_enclave \n", __func__);
+    return ret;
+  }
+  acquire_enclave_metadata_lock();
+  //check_enclave_
+  if(check_enclave_layout(create_args.paddr + RISCV_PGSIZE, 0, -1UL, create_args.paddr, create_args.paddr + create_args.size) != 0){
+    ret = ENCLAVE_ERROR;
+    sbi_bug("M mode: %s: check memory layout is failed\n", __func__);
+    release_enclave_metadata_lock();
+    return ret;
+  }
+  enclave = __alloc_enclave();
+  release_enclave_metadata_lock();
+  if(!enclave){
+    ret = ENCLAVE_NO_MEM;
+    return ret;
+  }
+  //TODO: SET_ENCLAVE_METADATA need to be extend to support concurrent enclave self-hashing.
+  SET_ENCLAVE_METADATA(create_args.entry_point, enclave, &create_args, enclave_create_param_t*, paddr);
+  pma = (struct pm_area_struct*)(create_args.paddr);
+  vma = (struct vm_area_struct*)(create_args.paddr + sizeof(struct pm_area_struct));
+  pma->paddr = create_args.paddr;
+  pma->size = create_args.size;
+  pma->free_mem = create_args.free_mem;
+  if(unlikely(pma->free_mem < pma->paddr || pma->free_mem >= pma->paddr + pma->size || pma->free_mem & ((1 << RISCV_PGSHIFT)-1))){
+    ret = ENCLAVE_ERROR;
+    sbi_bug("M mode: %s: pma free_mem is failed\n", __func__);
+    __free_enclave(enclave->eid);
+    return ret;
+  }
+  initilze_va_struct(pma, vma, enclave);
+  enclave->free_pages = NULL;
+  enclave->free_pages_num = 0;
+  free_mem = create_args.paddr + create_args.size - RISCV_PGSIZE;
+  enclave->ocalling_shm_key = -1UL;
+  while(free_mem >= create_args.free_mem){
+    struct page_t *page = (struct page_t*)free_mem;
+    page->paddr = free_mem;
+    page->next = enclave->free_pages;
+    enclave->free_pages = page;
+    enclave->free_pages_num += 1;
+    free_mem -= RISCV_PGSIZE;
+  }
+  //check kbuffer.
+  if(unlikely(create_args.kbuffer_size < RISCV_PGSIZE || create_args.kbuffer_size & (RISCV_PGSIZE-1)|| create_args.kbuffer & (RISCV_PGSIZE-1))){
+    ret = ENCLAVE_ERROR;
+    sbi_bug("M mode: %s: kbuffer check is failed\n", __func__);
+    __free_enclave(enclave->eid);
+    return ret;
+  }
+  //map kbuffer.
+  mmap((uintptr_t*)(enclave->root_page_table), &(enclave->free_pages), ENCLAVE_DEFAULT_KBUFFER, create_args.kbuffer, create_args.kbuffer_size);
+
+  //check shm
+  if(create_args.shm_paddr && create_args.shm_size && !(create_args.shm_paddr & (RISCV_PGSIZE-1)) && !(create_args.shm_size & (RISCV_PGSIZE-1))){
+    mmap((uintptr_t*)(enclave->root_page_table), &(enclave->free_pages), ENCLAVE_DEFAULT_SHM_BASE, create_args.shm_paddr, create_args.shm_size);
+    enclave->shm_paddr = create_args.shm_paddr;
+    enclave->shm_size = create_args.shm_size;
+  }else{
+    enclave->shm_paddr = 0;
+    enclave->shm_size = 0;
+  }
+  if(set_secure_memory(create_args.paddr, create_args.size, enclave) != 0){
+    ret = ENCLAVE_ERROR;
+    sbi_bug("M mode: %s: set secure memory is failed \n", __func__);
+    __free_enclave(enclave->eid);
+    return ret;
+  }
+  //TODO: monitor need to hash the hash-page of enclave, check the size before choose
+  copy_word_to_host((unsigned int*)create_args.eid_ptr, enclave->eid);
+  tlb_remote_sfence();
+  return ret;
+}
+
+/**
  * \brief Create a new shadow enclave with the create_args.
  * 
  * \param create_args The arguments for creating a new shadow enclave. 
@@ -1487,6 +1574,72 @@ uintptr_t map_relay_page(unsigned int eid, uintptr_t mm_arg_addr, uintptr_t mm_a
 
   return retval;
 }
+
+/**
+ * \brief Run the enclave with the given eid, but before enclave run should scan pt_area and invalidate invalid pte.
+ * 
+ * \param regs The host registers need to save.
+ * \param eid The given enclave id.
+ * \param enclave_run_param Including mm_arg_addr, mm_arg_size, relay page from host.
+ * \return uintptr_t 
+ */
+uintptr_t fast_run_enclave(uintptr_t* regs, unsigned int eid, enclave_run_param_t enclave_run_param)
+{
+  struct enclave_t* enclave;
+  uintptr_t retval = 0, mmap_offset = 0;
+  uintptr_t mm_arg_addr = enclave_run_param.mm_arg_addr;
+  uintptr_t mm_arg_size = enclave_run_param.mm_arg_size;
+  struct relay_page_entry_t * relay_page_entry = NULL;
+  acquire_enclave_metadata_lock();
+  enclave = __get_enclave(eid);
+  if(!enclave || enclave->state != FRESH || enclave->type == SERVER_ENCLAVE){
+    sbi_bug("M mode: fast_run_enclave: enclave%d can not be accessed!\n", eid);
+    retval = -1UL;
+    return retval;
+  }
+  check_and_set_enclave_safety(enclave);
+  release_enclave_metadata_lock();
+  hash_enclave(enclave, (void*)(enclave->hash), 0);
+  enclave->host_ptbr = csr_read(CSR_SATP);
+  if((retval = map_relay_page(eid, mm_arg_addr, mm_arg_size, &mmap_offset, enclave, relay_page_entry)) != 0){
+    //TODO: verify wheather need to flush remote tlb before returning or not.
+    return retval;
+  }
+  if(swap_from_host_to_enclave(regs, enclave) < 0){
+    sbi_bug("M mode: fast_run_enclave: enclave can not be run\n");
+    retval = -1UL;
+    return retval;
+  }
+  //set return address to enclave, need to modify when support enclave self-hashing.
+  csr_write(CSR_MEPC, (uintptr_t)enclave->entry_point);
+
+  //enable timer interrupt
+  csr_read_set(CSR_MIE, MIP_MTIP);
+  csr_read_set(CSR_MIE, MIP_MSIP);
+  //set stack register.
+  regs[2] = ENCLAVE_DEFAULT_STACK_BASE;
+  //pass parameters to enclave, need to modify too when support enclave self-hashing.
+  if(enclave->shm_paddr){
+    regs[10] = ENCLAVE_DEFAULT_SHM_BASE;
+  }else{
+    regs[10] = 0;
+  }
+  retval = regs[10];
+  regs[11] = enclave->shm_size;
+  regs[12] = eapp_args;
+  if(enclave->mm_arg_paddr[0]){
+    regs[13] = ENCLAVE_DEFAULT_MM_ARG_BASE;
+  }else{
+    regs[13] = 0;
+  }
+  regs[14] = mmap_offset;
+  //FIXME: I think eapp_args is juet used for debugging, can be removed later.
+  eapp_args = eapp_args + 1;
+  enclave->state = RUNNING;
+  tlb_remote_sfence();
+  return retval;
+}
+
 
 /**
  * \brief Run the enclave with the given eid and running parameters.

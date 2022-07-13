@@ -9,7 +9,68 @@
 static struct mm_region_list_t *mm_region_list;
 static spinlock_t mm_regions_lock = SPINLOCK_INIT;
 extern spinlock_t mbitmap_lock;
+extern unsigned long to_check_point;
+extern unsigned long checked_point;
+extern uintptr_t pt_area_pmd_base;
+extern uintptr_t pt_area_end;
+extern uintptr_t pt_area_pte_base;
+extern uintptr_t mbitmap_base;
+extern uintptr_t mbitmap_size;
 
+/**
+ * \brief Before enclave run, need to verify whether need to scan the pt_area.
+ * 
+ * \param enclave Enclave to be run.
+ */
+void check_and_set_enclave_safety(struct enclave_t* enclave)
+{
+  if(enclave->checkpoint_num <= checked_point){ // checked before this enclave running.
+    return;
+  }
+  unsigned long start, end;
+  start = rdcycle();
+  spin_lock(&mbitmap_lock);
+  uintptr_t *pte = (uintptr_t*)(pt_area_pmd_base);
+  uintptr_t *pte_end = (uintptr_t*)(pt_area_end);
+  while(pte < pte_end){
+    if(!IS_PGD(*pte) && PTE_VALID(*pte)){
+      uintptr_t pfn = PTE_TO_PFN(*pte);
+      pfn = pfn - ((uintptr_t)DRAM_BASE >> RISCV_PGSHIFT);
+
+      //check for valid huge page entry.
+      if((unsigned long)pte < pt_area_pte_base && IS_LEAF_PTE(*pte)){
+        page_meta* page_cur = ((page_meta*)(mbitmap_base)) + pfn;
+        page_meta* page_end = ((page_meta*)(mbitmap_base)) + pfn + RISCV_PTENUM - 1;
+        while(page_cur < page_end){
+          if((*page_cur & 0x80000000) == (*(page_cur + 1) & 0x80000000)){
+            page_cur += 1;
+            continue;
+          }else{
+            sbi_bug("Debug: page_cur: 0x%x, page_cur + 1: 0x%x \n", *page_cur, *(page_cur + 1));
+            break;
+          }
+        }
+        if(unlikely(page_cur != page_end)){
+          sbi_bug("M mode: ERROR: check_and_set_enclave_safety: non-split page\n");
+        }else{
+          if(IS_PRIVATE_PAGE(*page_cur)){
+            *pte = INVALIDATE_PTE(*pte);
+          }
+        }//Check for valid page table entry.
+      }else if((unsigned long)pte >= pt_area_pte_base && (unsigned long)pte < pt_area_end && IS_LEAF_PTE(*pte)){
+        page_meta* meta = (page_meta*)(mbitmap_base) + pfn;
+        if(IS_PRIVATE_PAGE(*meta)){
+          *pte = INVALIDATE_PTE(*pte);
+        }
+      }
+    }
+    pte += 1;
+  }
+  checked_point = to_check_point;
+  spin_unlock(&mbitmap_lock);
+  end = rdcycle();
+  sbi_printf("check_and_set_enclave_safety: %ld\n", end - start);
+}
 
 /**
  * \brief This function will turn a set of untrusted pages to secure pages.
@@ -64,6 +125,56 @@ out:
   spin_unlock(&mbitmap_lock);
   return ret;
 }
+
+
+/**
+ * \brief Set the secure memory range in bitmap but don't check the pt_area.
+ * 
+ * \param paddr range start physical address.
+ * \param size  memory range size.
+ * \return int 
+ */
+int set_secure_memory(unsigned long paddr, unsigned long size, struct enclave_t *enclave)
+{
+  int ret = 0;
+  unsigned long start, end;
+  start = rdcycle();
+  //Is it suitable to use unlikely here?
+  if(unlikely(paddr & (RISCV_PGSIZE-1) || size < RISCV_PGSIZE || size & (RISCV_PGSIZE-1))){
+    ret = -1;
+    return ret;
+  }
+  spin_lock(&mbitmap_lock);
+  if(test_public_range(PADDR_TO_PFN(paddr), size >> RISCV_PGSHIFT) != 0){
+    ret = -1;
+    goto out;
+  }
+  set_private_range(PADDR_TO_PFN(paddr), size >> RISCV_PGSHIFT);
+  to_check_point += 1;
+  enclave->checkpoint_num = to_check_point;
+  //FIXME: initial __free_secure_memory function without locking may have concurrent problem with global pt_area scan phase.
+out:
+  spin_unlock(&mbitmap_lock);
+  end = rdcycle();
+  sbi_printf("set_secure_memory: %ld\n", end - start);
+  return ret;
+}
+
+/**
+ * \brief unset the memory range in bitmap.
+ * 
+ * \param paddr range start physical address.
+ * \param size range size.
+ */
+void unset_secure_memory(unsigned long paddr, unsigned long size)
+{
+  //need lock because MAKE_PUBLIC_PAGE operation is not atomic. seems acquire lock here is very inefficient
+  //but unset_secure_memory is rarely called.
+  spin_lock(&mbitmap_lock);
+  set_public_range(PADDR_TO_PFN(paddr), size >> RISCV_PGSHIFT);
+  spin_unlock(&mbitmap_lock);
+}
+
 
 /**
  * \brief Free a set of secure pages.

@@ -9,6 +9,8 @@
 #define SM_SIZE 0x200000UL
 
 //SBI_CALL NUMBERS
+#define SBI_SM_FAST_RUN_ENCLAVE 	103
+#define SBI_SM_FAST_CREATE_ENCLAVE   102
 #define SBI_SET_PTE            101
 #define SBI_SM_INIT            100
 #define SBI_CREATE_ENCLAVE      99
@@ -146,6 +148,8 @@ uintptr_t sm_schrodinger_init(uintptr_t paddr, uintptr_t size);
 
 // Enclave-related operations
 uintptr_t sm_create_enclave(uintptr_t enclave_create_args);
+uintptr_t sm_fast_create_enclave(uintptr_t enclave_create_args);
+uintptr_t sm_fast_run_enclave(uintptr_t *regs, uintptr_t enclave_id, uintptr_t enclave_run_arg);
 uintptr_t sm_attest_enclave(uintptr_t enclave_id, uintptr_t report, uintptr_t nonce);
 uintptr_t sm_run_enclave(uintptr_t *regs, uintptr_t enclave_id, uintptr_t enclave_run_arg);
 uintptr_t sm_stop_enclave(uintptr_t *regs, uintptr_t enclave_id);

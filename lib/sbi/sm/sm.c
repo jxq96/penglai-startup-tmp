@@ -53,6 +53,8 @@ uintptr_t pmd_order = 0;
 uintptr_t pt_area_pmd_base = 0;
 uintptr_t pt_area_pte_base = 0;
 spinlock_t mbitmap_lock = SPINLOCK_INIT;
+unsigned long to_check_point = 0;
+unsigned long checked_point = 0;
 
 /**
  * \brief This function validates whether the enclave environment is ready
@@ -868,6 +870,29 @@ uintptr_t sm_create_enclave(uintptr_t enclave_sbi_param)
 }
 
 /**
+ * \brief This transitional function is used to create a enclave but without checking the pt_area. 
+ * It can be merged with sm_create_enclave with additional parameter. 
+ * 
+ * \param enclave_sbi_param The enclave create arguments
+ * \return uintptr_t Status code, 0 means success, others mean failure
+ */
+uintptr_t sm_fast_create_enclave(uintptr_t enclave_sbi_param)
+{
+//TODO: merge this function with sm_create_enclave with additional parameter to re-use code blocks.
+  enclave_create_param_t enclave_sbi_param_local;
+  uintptr_t retval = 0;
+  if(test_public_range(PADDR_TO_PFN(enclave_sbi_param),1) < 0){
+    return ENCLAVE_ERROR;
+  }
+  retval = copy_from_host(&enclave_sbi_param_local,(enclave_create_param_t*)enclave_sbi_param, sizeof(enclave_create_param_t));
+  if(retval){
+    return ENCLAVE_ERROR;
+  }
+  retval = fast_create_enclave(enclave_sbi_param_local);
+  return retval;
+}
+
+/**
  * \brief This transitional function is used to attest the enclave.
  * 
  * \param eid The enclave id.
@@ -880,6 +905,31 @@ uintptr_t sm_attest_enclave(uintptr_t eid, uintptr_t report, uintptr_t nonce)
 
   retval = attest_enclave(eid, report, nonce);
 
+  return retval;
+}
+
+
+/**
+ * \brief 
+ * 
+ * \param regs Transitional function to fast run enclave.
+ * \param eid The enclave id.
+ * \param enclave_run_args Arguments to be used to run enclave.
+ * \return uintptr_t  Returns 0 on success, otherwise on failure.
+ */
+
+uintptr_t sm_fast_run_enclave(uintptr_t* regs, uintptr_t eid, uintptr_t enclave_run_args)
+{
+  uintptr_t retval = 0;
+  enclave_run_param_t enclave_sbi_param_local;
+  if(test_public_range(PADDR_TO_PFN(enclave_run_args),1) < 0){
+    return ENCLAVE_ERROR;
+  }
+  retval = copy_from_host(&enclave_sbi_param_local,(enclave_run_param_t*)enclave_run_args, sizeof(enclave_run_param_t));
+  if(retval != 0){
+    return ENCLAVE_ERROR;
+  }
+  retval = fast_run_enclave(regs, (unsigned long)eid, enclave_sbi_param_local);
   return retval;
 }
 

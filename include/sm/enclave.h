@@ -142,6 +142,7 @@ struct enclave_t
   unsigned long* ocall_syscall_num;
   unsigned long* retval;
   unsigned long ocalling_shm_key;
+  unsigned long checkpoint_num;
   // enclave thread context
   // TODO: support multiple threads
   struct thread_state_t thread_context;
@@ -205,6 +206,8 @@ void free_enclave_memory(struct pm_area_struct *pma);
 
 // Called by host
 // Enclave-related operations
+uintptr_t fast_create_enclave(enclave_create_param_t create_args);
+uintptr_t fast_run_enclave(uintptr_t* regs, unsigned int eid, enclave_run_param_t enclave_run_param);
 uintptr_t create_enclave(enclave_create_param_t create_args);
 uintptr_t attest_enclave(uintptr_t eid, uintptr_t report, uintptr_t nonce);
 uintptr_t run_enclave(uintptr_t* regs, unsigned int eid, enclave_run_param_t enclave_run_param);

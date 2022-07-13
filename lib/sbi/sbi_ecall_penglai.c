@@ -24,6 +24,12 @@ static int sbi_ecall_penglai_handler(unsigned long extid, unsigned long funcid,
   uintptr_t arg0 = args[10], arg1 = args[11], arg2 = args[12], arg3 = args[13], retval;
   csr_write(CSR_MEPC, args[32] + 4);
   switch (funcid) {
+    case SBI_SM_FAST_CREATE_ENCLAVE:
+      retval = sm_fast_create_enclave(arg0);
+      break;
+    case SBI_SM_FAST_RUN_ENCLAVE:
+      retval = sm_fast_run_enclave(args, arg0, arg1);
+      break;
     case SBI_SET_PTE:
       retval = sm_set_pte(arg0, (uintptr_t*)arg1, arg2, arg3);
       break;
