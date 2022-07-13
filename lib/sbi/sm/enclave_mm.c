@@ -36,29 +36,8 @@ void check_and_set_enclave_safety(struct enclave_t* enclave)
     if(!IS_PGD(*pte) && PTE_VALID(*pte)){
       uintptr_t pfn = PTE_TO_PFN(*pte);
       pfn = pfn - ((uintptr_t)DRAM_BASE >> RISCV_PGSHIFT);
-
-      //check for valid huge page entry.
-      if((unsigned long)pte < pt_area_pte_base && IS_LEAF_PTE(*pte)){
-        page_meta* page_cur = ((page_meta*)(mbitmap_base)) + pfn;
-        page_meta* page_end = ((page_meta*)(mbitmap_base)) + pfn + RISCV_PTENUM - 1;
-        while(page_cur < page_end){
-          if((*page_cur & 0x80000000) == (*(page_cur + 1) & 0x80000000)){
-            page_cur += 1;
-            continue;
-          }else{
-            sbi_bug("Debug: page_cur: 0x%x, page_cur + 1: 0x%x \n", *page_cur, *(page_cur + 1));
-            break;
-          }
-        }
-        if(unlikely(page_cur != page_end)){
-          sbi_bug("M mode: ERROR: check_and_set_enclave_safety: non-split page\n");
-        }else{
-          if(IS_PRIVATE_PAGE(*page_cur)){
-            *pte = INVALIDATE_PTE(*pte);
-          }
-        }//Check for valid page table entry.
-      }else if((unsigned long)pte >= pt_area_pte_base && (unsigned long)pte < pt_area_end && IS_LEAF_PTE(*pte)){
-        page_meta* meta = (page_meta*)(mbitmap_base) + pfn;
+      if(IS_LEAF_PTE(*pte)){
+        page_meta * meta = (page_meta*)(mbitmap_base) + pfn;
         if(IS_PRIVATE_PAGE(*meta)){
           *pte = INVALIDATE_PTE(*pte);
         }
