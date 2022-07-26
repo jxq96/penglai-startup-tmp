@@ -1409,3 +1409,22 @@ uintptr_t sm_split_mem_region(uintptr_t *regs, uintptr_t mem_addr, uintptr_t mem
 
   return ret;
 }
+
+/**
+ * \brief This transitional function is used to pass the content hash of from user enclave self-hash to
+ *        secure monitor. And the 32 bytes hash are split and put into the four 8 bytes registers.
+ * 
+ * \param regs The enclave regs.
+ * \param content_hash1 The first 8 bytes of content hash
+ * \param content_hash2 
+ * \param content_hash3 
+ * \param content_hash4 
+ * \return uintptr_t 
+ */
+
+uintptr_t sm_enclave_self_hash_ret(uintptr_t* regs, uintptr_t content_hash1, uintptr_t content_hash2, uintptr_t content_hash3, uintptr_t content_hash4)
+{
+  uintptr_t ret = 0;
+  ret = enclave_self_hash_ret(regs, content_hash1, content_hash2, content_hash3, content_hash4);
+  return ret;
+}

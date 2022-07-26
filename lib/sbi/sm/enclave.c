@@ -1152,7 +1152,7 @@ void initilze_va_struct(struct pm_area_struct* pma, struct vm_area_struct* vma, 
   //FIXME: here we assume there are exactly text(include text/data/bss) vma and stack vma
   while(vma)
   {
-    if(vma->va_start == ENCLAVE_DEFAULT_TEXT_BASE)
+    if(vma->va_start == ENCLAVE_DEFAULT_TEXT_BASE || vma->va_start == ENCLAVE_DEFAULT_SELF_HASH_BASE)
     {
       enclave->text_vma = vma;
     }
@@ -1599,26 +1599,95 @@ uintptr_t fast_run_enclave(uintptr_t* regs, unsigned int eid, enclave_run_param_
   }
   check_and_set_enclave_safety(enclave);
   release_enclave_metadata_lock();
-  hash_enclave(enclave, (void*)(enclave->hash), 0);
-  enclave->host_ptbr = csr_read(CSR_SATP);
-  if((retval = map_relay_page(eid, mm_arg_addr, mm_arg_size, &mmap_offset, enclave, relay_page_entry)) != 0){
+  //small enclave, monitor hash.
+  if(enclave->text_vma->va_start == ENCLAVE_DEFAULT_TEXT_BASE){
+    //FIXME: unmap self hash page or not?
+    hash_enclave(enclave, (void*)(enclave->hash), 0);
+    enclave->host_ptbr = csr_read(CSR_SATP);
+    if((retval = map_relay_page(eid, mm_arg_addr, mm_arg_size, &mmap_offset, enclave, relay_page_entry)) != 0){
     //TODO: verify wheather need to flush remote tlb before returning or not.
-    return retval;
-  }
-  if(swap_from_host_to_enclave(regs, enclave) < 0){
-    sbi_bug("M mode: fast_run_enclave: enclave can not be run\n");
-    retval = -1UL;
-    return retval;
-  }
-  //set return address to enclave, need to modify when support enclave self-hashing.
-  csr_write(CSR_MEPC, (uintptr_t)enclave->entry_point);
+      return retval;
+    }
+    if(swap_from_host_to_enclave(regs, enclave) < 0){
+      sbi_bug("M mode: fast_run_enclave: enclave can not be run\n");
+      retval = -1UL;
+      return retval;
+    }
+    //set return address to enclave, need to modify when support enclave self-hashing.
+    csr_write(CSR_MEPC, (uintptr_t)enclave->entry_point);
 
-  //enable timer interrupt
+    //enable timer interrupt
+    csr_read_set(CSR_MIE, MIP_MTIP);
+    csr_read_set(CSR_MIE, MIP_MSIP);
+    //set stack register.
+    regs[2] = ENCLAVE_DEFAULT_STACK_BASE;
+    //pass parameters to enclave, need to modify too when support enclave self-hashing.
+    if(enclave->shm_paddr){
+      regs[10] = ENCLAVE_DEFAULT_SHM_BASE;
+    }else{
+      regs[10] = 0;
+    }
+    retval = regs[10];
+    regs[11] = enclave->shm_size;
+    regs[12] = eapp_args;
+    if(enclave->mm_arg_paddr[0]){
+      regs[13] = ENCLAVE_DEFAULT_MM_ARG_BASE;
+    }else{
+      regs[13] = 0;
+    }
+    regs[14] = mmap_offset;
+    //FIXME: I think eapp_args is juet used for debugging, can be removed later.
+    eapp_args = eapp_args + 1;
+    enclave->state = RUNNING;
+    tlb_remote_sfence();
+    return retval;
+  }
+  else{ // large enclave, need self hash.
+    enclave->host_ptbr = csr_read(CSR_SATP);
+    if((retval = map_relay_page(eid, mm_arg_addr, mm_arg_size, &mmap_offset, enclave, relay_page_entry)) != 0){
+      return retval;
+    }
+    enclave->relay_page_offset = mmap_offset;
+    if(swap_from_host_to_enclave(regs, enclave) < 0){
+      sbi_bug("M mode: fast_run_enclave: enclave cannot be run\n");
+      retval = -1UL;
+      return retval;
+    }
+    //set the entry point to self hash code, rather than enclave real entry point.
+    csr_write(CSR_MEPC, (uintptr_t)ENCLAVE_DEFAULT_SELF_HASH_BASE);
+    csr_read_set(CSR_MIE, MIP_MTIP);
+    csr_read_set(CSR_MIE, MIP_MSIP);
+    //using the same stack.
+    regs[2] = ENCLAVE_DEFAULT_STACK_BASE;
+    regs[10] = ENCLAVE_DEFAULT_TEXT_BASE;
+    regs[11] = enclave->text_vma->va_end - ENCLAVE_DEFAULT_TEXT_BASE;
+    enclave->state = RUNNING;
+    retval = regs[10];
+    tlb_remote_sfence();
+    return retval;
+  }
+}
+
+
+uintptr_t enclave_self_hash_ret(uintptr_t* regs, uintptr_t content_hash1, uintptr_t content_hash2, uintptr_t content_hash3, uintptr_t content_hash4)
+{
+  uintptr_t retval = 0;
+  int eid = get_curr_enclave_id();
+  struct enclave_t * enclave = NULL;
+  acquire_enclave_metadata_lock();
+  enclave = __get_enclave(eid);
+  uintptr_t* ptr_to_cp = (uintptr_t*)enclave->hash;
+  *ptr_to_cp++ = content_hash1;
+  *ptr_to_cp++ = content_hash2;
+  *ptr_to_cp++ = content_hash3;
+  *ptr_to_cp   = content_hash4;
+  //the nounce 
+  // hash_enclave_pt_attr(enclave, enclave->hash, 0);
+  release_enclave_metadata_lock();
+  csr_write(CSR_MEPC, (uintptr_t)enclave->entry_point);
   csr_read_set(CSR_MIE, MIP_MTIP);
   csr_read_set(CSR_MIE, MIP_MSIP);
-  //set stack register.
   regs[2] = ENCLAVE_DEFAULT_STACK_BASE;
-  //pass parameters to enclave, need to modify too when support enclave self-hashing.
   if(enclave->shm_paddr){
     regs[10] = ENCLAVE_DEFAULT_SHM_BASE;
   }else{
@@ -1632,11 +1701,8 @@ uintptr_t fast_run_enclave(uintptr_t* regs, unsigned int eid, enclave_run_param_
   }else{
     regs[13] = 0;
   }
-  regs[14] = mmap_offset;
-  //FIXME: I think eapp_args is juet used for debugging, can be removed later.
+  regs[14] = enclave->relay_page_offset;
   eapp_args = eapp_args + 1;
-  enclave->state = RUNNING;
-  tlb_remote_sfence();
   return retval;
 }
 

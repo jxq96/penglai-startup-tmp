@@ -80,6 +80,8 @@
 
 #define SBI_GET_KEY              88
 
+#define SBI_SELF_HASH_RET 		 80
+
 //Enclave ocall error number
 #define SYS_NULL                 0
 

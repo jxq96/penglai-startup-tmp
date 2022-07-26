@@ -195,6 +195,9 @@ int enclave_call_trap(struct sbi_trap_regs* regs)
 		case SBI_GET_KEY:
 			retval = sm_get_key((uintptr_t*)regs, arg0, (uintptr_t*)arg1, arg2);
 			break;
+		case SBI_SELF_HASH_RET:
+			retval = sm_enclave_self_hash_ret((uintptr_t*)regs, arg0, arg1, arg2, arg3);
+			break;
 		default:
 			retval = SBI_ERR_FAILED;
 			sbi_bug("M mode: enclave_call_trap: unsupported ecall number %lx from enclave\n", n);
